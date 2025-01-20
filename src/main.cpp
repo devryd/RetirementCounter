@@ -4,14 +4,23 @@
 #include "font.h"
 #include "avr/interrupt.h"
 #include "string.h"
+#include "stdlib.h"
 
 /*
-PB2     SDA
-PB3     SCL
-PB1     CS
-PB0     D/C
-PC2     RST
-PC3     BSY
+PA7     D_PWR
+PA6     SDA
+PA5     SCL
+PA4     CS
+PA3     D/C
+PA2     RST
+PA1     BSY
+
+PC0     DCF_SIG
+PC1     DCF_PWR 
+
+PC3     LED
+
+PB4     U_BAT
 
 */
 
@@ -31,8 +40,6 @@ void setY(uint8_t y);
 
 bool get_data;
 void write_72_at(uint8_t number, uint8_t x, uint8_t y);
-//uint16_t scale_byte(uint8_t in);
-//void write_large_char_at(char c, uint8_t x, uint8_t y);
 
 int main() {
     init();
@@ -59,18 +66,19 @@ int main() {
 
 void sda(uint8_t val) {
     if (val) 
-        PORTB_OUTSET = PIN2_bm;
+        PORTA_OUTSET = PIN6_bm;
     else
-        PORTB_OUTCLR = PIN2_bm;
+        PORTA_OUTCLR = PIN6_bm;
 }
 void scl(uint8_t val) {
     if (val) 
-        PORTB_OUTSET = PIN3_bm;
+        PORTA_OUTSET = PIN5_bm;
     else
-        PORTB_OUTCLR = PIN3_bm;
+        PORTA_OUTCLR = PIN5_bm;
 }
+
 void write_byte(uint8_t data) {
-    PORTB_OUTCLR = PIN1_bm;
+    PORTA_OUTCLR = PIN4_bm; //cs 0
     for(int i = 0; i < 8; i++) {
         sda(data & 0x80);
         _delay_us(10);
@@ -79,31 +87,27 @@ void write_byte(uint8_t data) {
         scl(0);
         data = data << 1;
     }
-    PORTB_OUTSET = PIN1_bm;
+    PORTA_OUTSET = PIN4_bm; //cs 1
    
 }
 void send_cmd(uint8_t cmd) {
-    PORTB_OUTCLR = PIN0_bm;
+    PORTA_OUTCLR = PIN3_bm; //dc 0
     write_byte(cmd);
 }
 void send_data(uint8_t data) {
-    PORTB_OUTSET = PIN0_bm;
+    PORTA_OUTSET = PIN3_bm; //dc 1
     write_byte(data);
 }
 
 void init() {
-
-    PORTB_DIRSET = PIN0_bm | PIN1_bm | PIN2_bm | PIN3_bm | PIN4_bm;
-    PORTC_OUTSET = PIN2_bm;
-    PORTB_OUTSET = PIN0_bm | PIN1_bm | PIN2_bm | PIN3_bm;
+    PORTA_DIRSET = PIN2_bm | PIN3_bm | PIN4_bm | PIN5_bm | PIN6_bm | PIN7_bm;
     _delay_ms(50);
-   // PORTB_OUTCLR = PIN0_bm | PIN1_bm | PIN2_bm | PIN3_bm;
-    PORTC_DIRSET = PIN2_bm;
-    PORTC_OUTCLR = PIN2_bm;
+    PORTA_OUTCLR = PIN2_bm; //rst 0
     _delay_ms(10);
-    PORTC_OUTSET = PIN2_bm;
+    PORTA_OUTSET = PIN2_bm; //rst high
+
     _delay_ms(10);
-    PORTB_OUTCLR = PIN3_bm;
+  //  PORTB_OUTCLR = PIN3_bm; //scl low ?
     
     send_cmd(0x12);
     _delay_ms(20);
@@ -133,7 +137,7 @@ void init() {
     send_data(0xb1);
 
     send_cmd(0x20);
-    while (PORTC_IN & PIN3_bm)
+    while (PORTA_IN & PIN1_bm) //bsy
         _delay_ms(10);
     
     send_cmd(0x4e);
@@ -162,13 +166,14 @@ void update() {
     send_data(0xc7);
 
     send_cmd(0x20);
-    while (PORTC_IN & PIN3_bm)
+    while (PORTA_IN & PIN1_bm)
         _delay_ms(10);
 }
 
 void standby() {
     send_cmd(0x10);
     send_data(0x01);
+    PORTA_OUTCLR = PIN7_bm;
 }
 
 void write_char_at(char c, uint8_t x, uint8_t y) {
