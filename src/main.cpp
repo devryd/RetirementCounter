@@ -62,18 +62,21 @@ int main() {
       (&PORTB_PIN0CTRL)[i] = PORT_ISC_INPUT_DISABLE_gc | PORT_PULLUPEN_bm;
       (&PORTC_PIN0CTRL)[i] = PORT_ISC_INPUT_DISABLE_gc | PORT_PULLUPEN_bm;
     }
-    PORTC_PIN0CTRL = PORT_ISC_INPUT_DISABLE_gc;
+    PORTC_PIN0CTRL = 0;
     PORTC_PIN3CTRL = PORT_ISC_INPUT_DISABLE_gc;
     PORTB_PIN4CTRL = PORT_ISC_INPUT_DISABLE_gc;
     while (!(CLKCTRL_MCLKSTATUS & PIN5_bm)) {
     }
     init_rtc();
+    PORTC_DIRSET = PIN1_bm;
+    PORTA_OUTSET = PIN1_bm;
+    init_TCB();
+
     while (1){
-      SLPCTRL_CTRLA = SLPCTRL_SEN_bm | SLPCTRL_SMODE_STDBY_gc;
+ //     SLPCTRL_CTRLA = SLPCTRL_SEN_bm | SLPCTRL_SMODE_STDBY_gc;
       __asm__ __volatile__ ( "sleep" "\n\t" :: );
     }
-    /*init_TCB();
-    data_count = 0;
+    /*data_count = 0;
     get_time = true;
     init();
 
@@ -308,18 +311,17 @@ ISR(TCB0_INT_vect) {
   cli();
   TCB0_INTFLAGS |= TCB_CAPT_bm;
   TCB0_CNT = 0;
-
   if (!get_time) {}
   else {
     millis += 10;
-    if (PORTC_IN & PIN2_bm) {
+    if (PORTC_IN & PIN0_bm) {
       state = 1;
     }
     else {
       state = 0;
     }
     if (!(state == last_state)) {
-      PORTB_OUTTGL = PIN4_bm;
+      PORTC_OUTTGL = PIN3_bm;
       if (!state) {                     //just went low
         if ((millis > 50) && (millis < 145)) {
           data[data_count] = 0;
@@ -374,7 +376,8 @@ ISR(RTC_CNT_vect) {
   cli();
   RTC_INTFLAGS |= RTC_CMP_bm;
   RTC_CNT = 0;
-  PORTC_OUTTGL = PIN3_bm;
+  second++;
+  //PORTC_OUTTGL = PIN3_bm;
   sei();
 }
 
