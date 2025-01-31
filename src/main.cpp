@@ -40,6 +40,7 @@ void setX(uint8_t x);
 void setY(uint8_t y);
 void init_TCB();
 void init_rtc();
+void write_days();
 
 struct tm end_time;
 struct tm current_time;
@@ -52,12 +53,14 @@ char data[60];
 uint8_t data_count;
 bool get_time;
 unsigned millis;
-bool state, last_state;
+bool state, last_state, first;
 
 int main() {
+  first = true;
   end_time.tm_mday = 31;
-  end_time.tm_mday = 3;
+  end_time.tm_mon = 3;
   end_time.tm_year = 2030 - 1900;
+  end_time.tm_hour = 18;
   _PROTECTED_WRITE(CLKCTRL_MCLKCTRLB, 0x09); // use protected write to set F_CPU to 625KHz
   _PROTECTED_WRITE(CLKCTRL_XOSC32KCTRLA, 0x03);
   for (int i = 0; i < 8; i++) {
@@ -74,11 +77,11 @@ int main() {
 
   while (!(CLKCTRL_MCLKSTATUS & PIN5_bm)) {
   }
-  init_rtc();
-  init_TCB();
   init();
   update();
   standby();
+  init_rtc();
+  init_TCB();
   get_time = true;
   while (1){
     SLPCTRL_CTRLA = SLPCTRL_SEN_bm | SLPCTRL_SMODE_STDBY_gc;
@@ -103,10 +106,10 @@ void scl(uint8_t val) {
 void write_byte(uint8_t data) {
   PORTA_OUTCLR = PIN4_bm; //cs 0
   for(int i = 0; i < 8; i++) {
+    scl(0);
     sda(data & 0x80);
     scl(1);
     data = data << 1;
-    scl(0);
   }
   PORTA_OUTSET = PIN4_bm; //cs 1
 
@@ -169,11 +172,12 @@ void init() {
   send_cmd(0x4F);
   send_data(0xC7);
   send_data(0);
-
+  _PROTECTED_WRITE(CLKCTRL_MCLKCTRLB, 0x01);
   send_cmd(0x24);
   for(int i = 0; i < 5000; i ++) {
       send_data(0xFF);
   }
+  _PROTECTED_WRITE(CLKCTRL_MCLKCTRLB, 0x09);
 }
 
 void update() {
@@ -286,11 +290,24 @@ void write_72_at(uint8_t number, uint8_t x, uint8_t y) {
     setX(48 * x + i);
     setY(9 * y);
     send_cmd(0x24);
+    _PROTECTED_WRITE(CLKCTRL_MCLKCTRLB, 0x01);
     for (int j = 0; j < 9; j++) {
-
         send_data(~calibri_72ptBitmaps[number * 432 + j + 9 * i]);
     }
+    _PROTECTED_WRITE(CLKCTRL_MCLKCTRLB, 0x09);
   }
+}
+
+void write_days() {
+  long remaining = mktime(&end_time) - current;
+  remaining /= 86400;
+  write_72_at(remaining / 1000, 0, 0);
+  remaining %= 1000;
+  write_72_at(remaining / 100, 1, 0);
+  remaining %= 100;
+  write_72_at(remaining / 10, 2, 0);
+  remaining %= 10;
+  write_72_at(remaining , 3, 0);
 }
 
 ISR(TCB0_INT_vect) {
@@ -333,17 +350,14 @@ ISR(TCB0_INT_vect) {
 
             old_time = current;
             current = mktime(&current_time);
+            if (first) {
+              init();
+              write_days();
+              update();
+              standby();
+              first = false;
+            }
 
-            init();
-            char temp[20];
-            number_to_string(current_time.tm_mday, temp, 20);
-            write_string_at(temp, 6, 0, 0);
-            number_to_string(current_time.tm_mon, temp, 20);
-            write_string_at(temp, 6, 0, 1);
-            number_to_string(current_time.tm_year + 1900, temp, 20);
-            write_string_at(temp, 6, 0, 2);
-            update();
-            standby();
             get_time = false;
             PORTC_OUTCLR = PIN3_bm;
             PORTC_OUTCLR = PIN1_bm;
@@ -367,6 +381,19 @@ ISR(RTC_CNT_vect) {
   RTC_INTFLAGS |= RTC_CMP_bm;
   RTC_CNT = 0;
   current++;
+  current_time = *localtime(&current);
+  if (current_time.tm_hour == 4 && current_time.tm_wday == 1 && !current_time.tm_min && !current_time.tm_sec) {
+    init_TCB();
+    get_time = true;
+  }
+
+  if (!current_time.tm_hour && !current_time.tm_min && !current_time.tm_sec) {
+    init();
+    write_days();
+    update();
+    standby();
+  }
+
   sei();
 }
 
@@ -394,3 +421,4 @@ void init_rtc(){
   RTC_CMP = 32767;
   sei();
 }
+
