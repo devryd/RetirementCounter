@@ -60,7 +60,7 @@ int main() {
   end_time.tm_mday = 31;
   end_time.tm_mon = 3;
   end_time.tm_year = 2030 - 1900;
-  end_time.tm_hour = 18;
+  end_time.tm_hour = 0;
   _PROTECTED_WRITE(CLKCTRL_MCLKCTRLB, 0x09); // use protected write to set F_CPU to 625KHz
   _PROTECTED_WRITE(CLKCTRL_XOSC32KCTRLA, 0x03);
   for (int i = 0; i < 8; i++) {
@@ -319,9 +319,13 @@ ISR(TCB0_INT_vect) {
     millis += 10;
     if (PORTC_IN & PIN0_bm) {
       state = 1;
+      if (first)
+        PORTC_OUTSET = PIN3_bm;
     }
     else {
       state = 0;
+      PORTC_OUTCLR = PIN3_bm;
+
     }
     if (!(state == last_state)) {
       if (!state) {                     //just went low
