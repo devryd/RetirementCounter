@@ -41,6 +41,7 @@ void setY(uint8_t y);
 void init_TCB();
 void init_rtc();
 void write_days();
+float get_voltage();
 
 struct tm end_time;
 struct tm current_time;
@@ -58,7 +59,7 @@ bool state, last_state, first;
 int main() {
   first = true;
   end_time.tm_mday = 31;
-  end_time.tm_mon = 3;
+  end_time.tm_mon = 2;
   end_time.tm_year = 2030 - 1900;
   end_time.tm_hour = 0;
   _PROTECTED_WRITE(CLKCTRL_MCLKCTRLB, 0x09); // use protected write to set F_CPU to 625KHz
@@ -308,6 +309,11 @@ void write_days() {
   write_72_at(remaining / 10, 2, 0);
   remaining %= 10;
   write_72_at(remaining , 3, 0);
+  float voltage = get_voltage();
+  write_string_at("Tage uebrig", 11, 8, 5);
+  if (voltage < 3.15) {
+    write_string_at("Bat low", 7, 0, 6);
+  }
 }
 
 ISR(TCB0_INT_vect) {
@@ -351,7 +357,10 @@ ISR(TCB0_INT_vect) {
             current_time.tm_mon  = data[49]*10 + data[48]*8 + data[47]*4 + data[46]*2 + data[45];
             current_time.tm_year = 100 + data[57]*80 + data[56]*40 + data[55]*20 + data[54]*10 + data[53]*8 + data[52]*4 + data[51]*2 + data[50];
             current_time.tm_sec  = 0;
-
+            if (current_time.tm_mon == 12)
+              current_time.tm_mon = 0;
+            else
+              current_time.tm_mon--;
             old_time = current;
             current = mktime(&current_time);
             if (first) {
@@ -391,7 +400,7 @@ ISR(RTC_CNT_vect) {
     get_time = true;
   }
 
-  if (!current_time.tm_hour && !current_time.tm_min && !current_time.tm_sec) {
+  if (current_time.tm_hour == 12 && !current_time.tm_min && !current_time.tm_sec) {
     init();
     write_days();
     update();
@@ -426,3 +435,16 @@ void init_rtc(){
   sei();
 }
 
+float get_voltage() {
+  VREF_CTRLA = 0x10;
+  VREF_CTRLB = PIN1_bm;
+  ADC0_CTRLC = 0x50;  // use vcc as reference
+  ADC0_MUXPOS = 0x1d; // select channel 6
+  ADC0_CTRLA |= 0x01; // enable adc 1
+  ADC0_COMMAND |= 0x01;  // finally measure
+  while (!(ADC0_INTFLAGS && 0x01)) ; //wait until measurement is done
+  uint16_t data = ADC0_RES;
+  ADC1_INTFLAGS |= 0x01;
+  VREF_CTRLB = 0;
+  return ((float) 1.1 * 1024 / data );
+}
